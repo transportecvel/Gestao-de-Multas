@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Multas de Trânsito - Movistar Logística</title>
+    <!-- Chart.js para o Dashboard Analítico Interativo -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="light">
+
+    <!-- OVERLAY DE CARREGAMENTO INICIAL COM BARRA DE PROGRESSO DE 0 A 100% -->
+    <div id="globalLoader">
+        <div class="loader-box">
+            <div class="loader-spinner"></div>
+            <div class="loader-title">Carregando Sistema de Multas</div>
+            <div class="loader-status" id="loaderStatusText">Iniciando requisições ao n8n...</div>
+            <div class="progress-track">
+                <div class="progress-fill" id="loaderProgressBar"></div>
+            </div>
+            <div class="progress-percentage" id="loaderPercentage">0%</div>
+        </div>
+    </div>
+
+    <!-- CANVAS DOS CAMINHÕES -->
+    <canvas id="truckCanvas"></canvas>
+
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <a href="#" class="nav-brand">
+            <span class="nav-title">Controle de Multas de Trânsito</span>
+        </a>
+        <div class="nav-actions">
+            <button class="btn-theme-toggle" onclick="alternarTema()" title="Alternar Modo Claro/Escuro">
+                <span id="themeIcon">☀️</span>
+            </button>
+            <button class="btn-nav btn-calendar" onclick="abrirModalFiltroData()">📅 Filtro por Data</button>
+            <button class="btn-nav btn-analytics" onclick="abrirDashboardAnalitico()">📈 Dashboard Analítico</button>
+            <button class="btn-nav btn-add" onclick="abrirModalCadastro()">➕ Nova Multa</button>
+            <button class="btn-nav" onclick="abrirModalFiltroRelatorio()">📊 Relatório A4</button>
+        </div>
+    </nav>
+
+    <div class="container">
+
+        <!-- ALERTA DO TOPO -->
+        <div id="boxAlertas" class="alert-banner" style="display: none;">
+            <div class="alert-icon">⚠️</div>
+            <div class="alert-content">
+                <strong>Atenção aos Prazos de Multas!</strong>
+                <p id="alertTexto">Carregando pendências...</p>
+            </div>
+            <button class="btn-alert-close" onclick="fecharBannerAlerta()">&times;</button>
+        </div>
+
+        <!-- DASHBOARD KPIS -->
+        <div class="kpi-grid">
+            <div class="kpi-card card-orange" onclick="abrirPopUpSituacao('IDENTIFICAR_CONDUTOR')">
+                <span class="kpi-emoji">🔍</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">Identificar Condutor</span>
+                    <span class="kpi-num" id="kpiIdentificar">0</span>
+                </div>
+            </div>
+            <div class="kpi-card card-blue" onclick="abrirPopUpSituacao('POSTADA')">
+                <span class="kpi-emoji">✉️</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">Postada p/ Órgão</span>
+                    <span class="kpi-num" id="kpiPostada">0</span>
+                </div>
+            </div>
+            <div class="kpi-card card-yellow" onclick="abrirPopUpSituacao('PAGAR')">
+                <span class="kpi-emoji">💳</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">A Pagar</span>
+                    <span class="kpi-num" id="kpiPagar">0</span>
+                </div>
+            </div>
+            <div class="kpi-card card-green" onclick="abrirPopUpSituacao('PAGA')">
+                <span class="kpi-emoji">✅</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">Pagas</span>
+                    <span class="kpi-num" id="kpiPaga">0</span>
+                </div>
+            </div>
+            <div class="kpi-card card-purple" onclick="abrirPopUpSituacao('ADVERTENCIA')">
+                <span class="kpi-emoji">📜</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">Advertência</span>
+                    <span class="kpi-num" id="kpiAdvertencia">0</span>
+                </div>
+            </div>
+            <div class="kpi-card card-red" onclick="abrirPopUpSituacao('VENCIDA')">
+                <span class="kpi-emoji">⚠️</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">Vencidas</span>
+                    <span class="kpi-num" id="kpiVencida">0</span>
+                </div>
+            </div>
+            <div class="kpi-card card-teal" onclick="abrirPopUpSituacao('PAGO_LICENCIAMENTO')">
+                <span class="kpi-emoji">🚗</span>
+                <div class="kpi-info">
+                    <span class="kpi-title">Licenciamento</span>
+                    <span class="kpi-num" id="kpiLicenciamento">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILTROS DE PESQUISA -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">🔎 Filtros de Pesquisa de Multas</span>
+                <span id="txtTotalMultas" class="total-badge">0 multa(s) encontrada(s)</span>
+            </div>
+
+            <div class="filters-grid">
+                <div class="filter-group full">
+                    <label>Busca Rápida</label>
+                    <input type="text" id="fBuscaGeral" placeholder="Digite placa, frota, auto, artigo ou condutor..." oninput="aplicarFiltros()">
+                </div>
+                <div class="filter-group">
+                    <label>Situação da Multa</label>
+                    <select id="fSituacao" onchange="aplicarFiltros()">
+                        <option value="">TODAS AS SITUAÇÕES</option>
+                        <option value="IDENTIFICAR_CONDUTOR">🔍 Identificar Condutor</option>
+                        <option value="POSTADA">✉️ Postada (Envio ao Órgão)</option>
+                        <option value="PAGAR">💳 Pagar (Boleto em Aberto)</option>
+                        <option value="PAGA">✅ Paga (Histórico)</option>
+                        <option value="ADVERTENCIA">📜 Advertência</option>
+                        <option value="VENCIDA">⚠️ Vencida</option>
+                        <option value="PAGO_LICENCIAMENTO">🚗 Licenciamento</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Ordenar Listagem Por</label>
+                    <select id="fOrdenacao" class="styled-select" onchange="aplicarFiltros()">
+                        <option value="SITUACAO_PRIORIDADE">📌 1º Identificar ➔ 2º A Pagar ➔ 3º Pagas</option>
+                        <option value="VENCIMENTO_ASC">⏳ Vencimento mais Próximo (Urgentes)</option>
+                        <option value="DATA_INFRAÇÃO_DESC">📅 Data da Infração (Mais recentes)</option>
+                        <option value="VALOR_DESC">💰 Maior Valor Líquido</option>
+                        <option value="PLACA">🚘 Placa do Veículo (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- AGENDA DE PRAZOS -->
+        <div class="card">
+            <div class="card-header"><span class="card-title">📅 Agenda de Prazos Críticos (Próximos Vencimentos)</span></div>
+            <div id="gridAgendaPrazos" class="agenda-grid"></div>
+        </div>
+
+        <!-- TABELA OPERACIONAL -->
+        <div class="card">
+            <div class="card-header"><span class="card-title">📋 Controle Operacional de Infrações</span></div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="mudarOrdenacao('PLACA')">Placa / Frota ↕️</th>
+                            <th>Modelo / Filial</th>
+                            <th>Auto Infração</th>
+                            <th onclick="mudarOrdenacao('CONDUTOR')">Condutor ↕️</th>
+                            <th onclick="mudarOrdenacao('DATA_INFRAÇÃO_DESC')">Data Infração ↕️</th>
+                            <th>Artigo CTB</th>
+                            <th onclick="mudarOrdenacao('VALOR_DESC')">Valor Líquido ↕️</th>
+                            <th onclick="mudarOrdenacao('VENCIMENTO_ASC')">Vencimento ↕️</th>
+                            <th onclick="mudarOrdenacao('SITUACAO_PRIORIDADE')">Situação ↕️</th>
+                            <th style="text-align: center;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyMultas"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL FILTRO DE CALENDÁRIO -->
+    <div class="modal" id="modalFiltroData" onclick="fecharModalClickFora(event, 'modalFiltroData')">
+        <div class="modal-content" style="max-width: 500px;">
+            <span class="modal-close" onclick="fecharModal('modalFiltroData')">&times;</span>
+            <h2>📅 Consulta por Data da Infração</h2>
+            <p class="modal-subtitle">Escolha uma data específica ou um intervalo de datas para filtrar as infrações</p>
+
+            <div class="form-grid-aligned">
+                <div class="form-group">
+                    <label>Data Inicial *</label>
+                    <input type="date" id="fCalDataInicio">
+                </div>
+                <div class="form-group">
+                    <label>Data Final (Opcional)</label>
+                    <input type="date" id="fCalDataFim">
+                </div>
+            </div>
+
+            <div class="modal-form-actions">
+                <button type="button" class="btn-popup-secondary" onclick="limparFiltroData()">🔄 Limpar</button>
+                <button type="button" class="btn-popup" onclick="executarFiltroData()">🔍 Pesquisar por Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RESULTADO CONSULTA POR DATA -->
+    <div class="modal" id="modalResultadoData" onclick="fecharModalClickFora(event, 'modalResultadoData')">
+        <div class="modal-content">
+            <span class="modal-close" onclick="fecharModal('modalResultadoData')">&times;</span>
+            <h2 id="resDataTitulo">Multas do Período Selecionado</h2>
+            <p class="modal-subtitle" id="resDataSub">Resultados da pesquisa por data</p>
+
+            <div class="table-responsive" style="margin-top:15px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Placa / Frota</th>
+                            <th>Auto Infração</th>
+                            <th>Condutor</th>
+                            <th>Data Infração</th>
+                            <th>Valor Líquido</th>
+                            <th>Situação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyResultadoData"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CADASTRO / EDIÇÃO -->
+    <div class="modal" id="modalCadastro" onclick="fecharModalClickFora(event, 'modalCadastro')">
+        <div class="modal-content" id="refModalCadastro">
+            <span class="modal-close" onclick="fecharModal('modalCadastro')">&times;</span>
+            <h2 id="modalCadastroTitulo">Cadastrar Nova Multa de Trânsito</h2>
+            <p class="modal-subtitle">Preencha os dados. Pesquise por Artigo CTB ou pela Descrição da Infração para autopreenchimento.</p>
+
+            <form id="formMulta" onsubmit="salvarMulta(event)">
+                <input type="hidden" id="multaId">
+
+                <div class="form-grid-aligned">
+                    
+                    <!-- CAMPO PLACA DO VEÍCULO -->
+                    <div class="form-group">
+                        <label>Placa do Veículo *</label>
+                        <div class="loading-wrapper" id="wrapPlaca">
+                            <select id="mPlaca" tabindex="1" required onchange="buscarVeiculoNoN8N()">
+                                <option value="">Carregando placas do n8n...</option>
+                            </select>
+                            <span class="spinner-icon"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Auto de Infração *</label>
+                        <input type="text" id="mAuto" tabindex="2" placeholder="EX: R000275135" required style="text-transform: uppercase;">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Situação da Multa *</label>
+                        <select id="mSituacao" tabindex="3" required onchange="toggleDataBoleto()">
+                            <option value="IDENTIFICAR_CONDUTOR">🔍 Identificar Condutor (Aguardando)</option>
+                            <option value="POSTADA">✉️ Postada (Enviado ao Órgão)</option>
+                            <option value="PAGAR">💳 Pagar (Boleto em Aberto)</option>
+                            <option value="PAGA">✅ Paga (Histórico)</option>
+                            <option value="ADVERTENCIA">📜 Convertida em Advertência</option>
+                            <option value="VENCIDA">⚠️ Vencida</option>
+                            <option value="PAGO_LICENCIAMENTO">🚗 Pago no Licenciamento</option>
+                        </select>
+                    </div>
+
+                    <!-- SELECT: CÓDIGO DA INFRAÇÃO -->
+                    <div class="form-group">
+                        <label>Código da Infração *</label>
+                        <div class="loading-wrapper" id="wrapCodigo">
+                            <select id="mCodigoInfracao" tabindex="4" onchange="aoSelecionarCodigo()" required>
+                                <option value="">Carregando códigos do n8n...</option>
+                            </select>
+                            <span class="spinner-icon"></span>
+                        </div>
+                    </div>
+
+                    <!-- SELECT 1: AMPARO LEGAL / ARTIGO CTB -->
+                    <div class="form-group">
+                        <label>Amparo Legal / Artigo CTB *</label>
+                        <div class="loading-wrapper" id="wrapArtigo">
+                            <select id="mArtigoCTB" tabindex="5" onchange="aoSelecionarArtigo()" required>
+                                <option value="">Carregando artigos do n8n...</option>
+                            </select>
+                            <span class="spinner-icon"></span>
+                        </div>
+                    </div>
+
+                    <!-- SELECT 2: DESCRIÇÃO DA INFRAÇÃO -->
+                    <div class="form-group full-width">
+                        <label>Descrição da Infração (Pesquise pelo Nome) *</label>
+                        <div class="loading-wrapper" id="wrapInfracao">
+                            <select id="mInfracaoNomeSelect" tabindex="6" onchange="aoSelecionarDescricao()" required>
+                                <option value="">Carregando descrições do n8n...</option>
+                            </select>
+                            <span class="spinner-icon"></span>
+                        </div>
+                        <input type="hidden" id="mInfracaoNome">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Nome do Condutor</label>
+                        <input type="text" id="mCondutor" tabindex="7" placeholder="Ex: João da Silva">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Data da Infração *</label>
+                        <input type="date" id="mDataInfracao" tabindex="8" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Data Limite (Indicar Condutor/Defesa) *</label>
+                        <input type="date" id="mDataVencimento" tabindex="9" required>
+                    </div>
+
+                    <!-- NOVO CAMPO: VENCIMENTO DO BOLETO -->
+                    <div class="form-group" id="boxDataBoleto" style="display: none;">
+                        <label>Data Vencimento do Boleto</label>
+                        <input type="date" id="mDataVencimentoBoleto" tabindex="10">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Desconto Aplicável *</label>
+                        <select id="mPorcentagemDesconto" tabindex="11" onchange="calcularDesconto()">
+                            <option value="20" selected>20% (SNE / Desconto Padrão)</option>
+                            <option value="40">40% (Reconhecimento de Infração)</option>
+                            <option value="0">0% (Sem Desconto)</option>
+                        </select>
+                    </div>
+
+                    <!-- BLOCOS DE ENTREGA AOS SETORES COM DATAS DINÂMICAS -->
+                    <div class="form-group">
+                        <div class="switch-container">
+                            <span class="switch-label">Entregue ao RH?</span>
+                            <label class="switch">
+                                <input type="checkbox" id="mEntregueRH" tabindex="12" onchange="toggleDataSetor('RH')">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="boxDataRH" style="display: none;">
+                        <label>Data de Entrega ao RH *</label>
+                        <input type="date" id="mDataEntregueRH" tabindex="13">
+                    </div>
+
+                    <div class="form-group">
+                        <div class="switch-container">
+                            <span class="switch-label">Entregue ao Financeiro?</span>
+                            <label class="switch">
+                                <input type="checkbox" id="mEntregueFinanceiro" tabindex="14" onchange="toggleDataSetor('Financeiro')">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="boxDataFinanceiro" style="display: none;">
+                        <label>Data de Entrega ao Financeiro *</label>
+                        <input type="date" id="mDataEntregueFinanceiro" tabindex="15">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Observações / Protocolo</label>
+                        <textarea id="mObs" tabindex="16" rows="2" placeholder="Observações operacionais..."></textarea>
+                    </div>
+
+                    <!-- AUTOPREENCHIMENTO AUTOMÁTICO (N8N) -->
+                    <div class="form-group full-width" style="margin-top:10px; border-top:1px dashed var(--border-color); padding-top:10px;">
+                        <span style="font-size:11px; font-weight:800; color:var(--accent-blue);">ℹ️ INFORMAÇÕES AUTOMÁTICAS (N8N / TABELA)</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Frota</label>
+                        <input type="text" id="mFrota" tabindex="17" placeholder="Automático" readonly style="background:rgba(0,0,0,0.02);">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Modelo do Veículo</label>
+                        <input type="text" id="mModelo" tabindex="18" placeholder="Automático" readonly style="background:rgba(0,0,0,0.02);">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Filial / Unidade</label>
+                        <input type="text" id="mFilial" tabindex="19" placeholder="Automático" readonly style="background:rgba(0,0,0,0.02);">
+                    </div>
+
+                    <div class="form-group">
+                        <label>CNPJ da Empresa</label>
+                        <input type="text" id="mCnpj" tabindex="20" placeholder="Automático" readonly style="background:rgba(0,0,0,0.02);">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Infrator Responsável CTB</label>
+                        <input type="text" id="mInfratorCTB" tabindex="21" placeholder="Automático" readonly style="background:rgba(0,0,0,0.02); font-weight:700;">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Gravidade</label>
+                        <input type="text" id="mGravidade" tabindex="22" placeholder="Automático" readonly style="background:rgba(0,0,0,0.02);">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Valor Total Base (R$)</label>
+                        <input type="number" id="mValor" tabindex="23" step="0.01" placeholder="Automático" oninput="calcularDesconto()">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Valor Líquido a Pagar (R$)</label>
+                        <input type="number" id="mValorDesconto" tabindex="24" step="0.01" readonly placeholder="Automático" style="font-weight: 800; color: var(--accent-blue);">
+                    </div>
+
+                </div>
+
+                <div class="modal-form-actions">
+                    <button type="button" class="btn-popup-secondary" tabindex="26" onclick="fecharModal('modalCadastro')">Cancelar</button>
+                    <button type="submit" class="btn-popup" tabindex="25">💾 Salvar Multa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DASHBOARD ANALÍTICO -->
+    <div class="modal" id="modalAnalytics" onclick="fecharModalClickFora(event, 'modalAnalytics')">
+        <div class="modal-content" style="max-width: 920px;">
+            <span class="modal-close" onclick="fecharModal('modalAnalytics')">&times;</span>
+            <h2>📈 Dashboard Analítico de Infrações</h2>
+            <p class="modal-subtitle">Análise quantitativa de volume de multas, gravidade e veículos afetados</p>
+
+            <div class="analytics-grid">
+                <div class="chart-box">
+                    <h4>Quantidade de Multas por Situação</h4>
+                    <canvas id="chartSituacao" height="220"></canvas>
+                </div>
+
+                <div class="chart-box">
+                    <h4>Distribuição por Gravidade (Pontos)</h4>
+                    <canvas id="chartGravidade" height="220"></canvas>
+                </div>
+
+                <div class="chart-box" style="grid-column: 1 / -1;">
+                    <h4>Top Veículos com Mais Infrações Registradas</h4>
+                    <canvas id="chartVeiculos" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL POP-UP DE KPI -->
+    <div class="modal" id="modalKPIPopUp" onclick="fecharModalClickFora(event, 'modalKPIPopUp')">
+        <div class="modal-content">
+            <span class="modal-close" onclick="fecharModal('modalKPIPopUp')">&times;</span>
+            <h2 id="kpiPopUpTitulo">Multas por Situação</h2>
+            <p class="modal-subtitle">Listagem de infrações encontradas nesta categoria</p>
+            <div class="table-responsive" style="margin-top:15px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Placa/Frota</th>
+                            <th>Auto</th>
+                            <th>Condutor</th>
+                            <th>Vencimento</th>
+                            <th>Valor Líquido</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyKPIPopUp"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL POP-UP DE ALERTA INICIAL (< 14 DIAS) -->
+    <div class="modal" id="modalAlertaInicial" onclick="fecharModalClickFora(event, 'modalAlertaInicial')">
+        <div class="modal-content" style="border-left: 6px solid #dc2626;">
+            <span class="modal-close" onclick="fecharModal('modalAlertaInicial')">&times;</span>
+            <h2 style="color:#dc2626;">🚨 Atenção aos Prazos de Vencimento!</h2>
+            <p class="modal-subtitle">As seguintes multas possuem prazo limite de até 2 semanas (14 dias) ou estão atrasadas:</p>
+            <div class="table-responsive" style="margin-top:15px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Placa/Frota</th>
+                            <th>Auto Infração</th>
+                            <th>Condutor</th>
+                            <th>Data Vencimento</th>
+                            <th>Situação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyAlertaInicial"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE FILTRO PARA GERAR RELATÓRIO A4 -->
+    <div class="modal" id="modalFiltroRelatorio" onclick="fecharModalClickFora(event, 'modalFiltroRelatorio')">
+        <div class="modal-content" style="max-width:550px;">
+            <span class="modal-close" onclick="fecharModal('modalFiltroRelatorio')">&times;</span>
+            <h2>📊 Opções do Relatório para Impressão</h2>
+            <p class="modal-subtitle">Selecione os filtros antes de gerar o documento A4</p>
+
+            <div class="form-grid-aligned">
+                <div class="form-group full-width">
+                    <label>Situação da Multa</label>
+                    <select id="rptFilterSituacao">
+                        <option value="">TODAS AS SITUAÇÕES</option>
+                        <option value="IDENTIFICAR_CONDUTOR">🔍 Identificar Condutor</option>
+                        <option value="POSTADA">✉️ Postada (Envio ao Órgão)</option>
+                        <option value="PAGAR">💳 Pagar (Boleto)</option>
+                        <option value="PAGA">✅ Paga</option>
+                        <option value="VENCIDA">⚠️ Vencida</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Frota (Opcional)</label>
+                    <input type="text" id="rptFilterFrota" placeholder="Ex: 2154">
+                </div>
+                <div class="form-group">
+                    <label>Motorista (Opcional)</label>
+                    <input type="text" id="rptFilterCondutor" placeholder="Ex: João da Silva">
+                </div>
+            </div>
+
+            <div class="modal-form-actions">
+                <button type="button" class="btn-popup-secondary" onclick="fecharModal('modalFiltroRelatorio')">Cancelar</button>
+                <button type="button" class="btn-popup" onclick="gerarEImprimirRelatorio()">🖨️ Gerar e Imprimir Relatório A4</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ESTRUTURA EXCLUSIVA PARA IMPRESSÃO A4 -->
+    <div class="print-only-container" id="printContainer">
+        <div class="print-header">
+            <div>
+                <h2>MOVISTAR OPERAÇÕES LOGÍSTICAS LTDA</h2>
+                <p>RELATÓRIO GERENCIAL ANALÍTICO DE MULTAS DE TRÂNSITO</p>
+            </div>
+            <div style="text-align: right;">
+                <p id="printDataEmissao">Emissão: --/--/----</p>
+                <p id="printFiltrosUsados">Filtros: Todos</p>
+            </div>
+        </div>
+
+        <table class="print-table">
+            <thead>
+                <tr>
+                    <th>Placa / Frota</th>
+                    <th>Modelo</th>
+                    <th>Auto Infração</th>
+                    <th>Condutor Responsável</th>
+                    <th>Artigo CTB</th>
+                    <th>Valor Líquido</th>
+                    <th>RH (Data)</th>
+                    <th>Financ. (Data)</th>
+                    <th>Situação</th>
+                </tr>
+            </thead>
+            <tbody id="printTbody"></tbody>
+            <tfoot>
+                <tr class="print-summary-row">
+                    <td colspan="5" style="text-align: right; text-transform: uppercase;">Total de Infrações / Valor Líquido Total:</td>
+                    <td id="printTotalValor">R$ 0,00</td>
+                    <td colspan="3" id="printTotalQtd">0 multa(s)</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- MODAL FICHA DETALHADA COMPLETA -->
+    <div class="modal" id="modalFicha" onclick="fecharModalClickFora(event, 'modalFicha')">
+        <div class="modal-content" id="refModalFicha">
+            <span class="modal-close" onclick="fecharModal('modalFicha')">&times;</span>
+            <h2 id="fTituloPlaca">Ficha do Auto de Infração</h2>
+            <p class="modal-subtitle">Detalhes operacionais completos</p>
+            
+            <div class="detail-grid" id="fDetalhesGrid"></div>
+
+            <!-- PAINEL DE ALTERAÇÃO RÁPIDA DA SITUAÇÃO DA MULTA -->
+            <div class="quick-change-box">
+                <div class="quick-change-title">⚡ Alteração Rápida de Situação</div>
+                <div class="quick-change-controls">
+                    <input type="hidden" id="quickFichaMultaId">
+                    <select id="quickFichaSituacaoSelect">
+                        <option value="IDENTIFICAR_CONDUTOR">🔍 Identificar Condutor</option>
+                        <option value="POSTADA">✉️ Postada (Envio ao Órgão)</option>
+                        <option value="PAGAR">💳 Pagar (Boleto em Aberto)</option>
+                        <option value="PAGA">✅ Paga (Histórico)</option>
+                        <option value="ADVERTENCIA">📜 Convertida em Advertência</option>
+                        <option value="VENCIDA">⚠️ Vencida</option>
+                        <option value="PAGO_LICENCIAMENTO">🚗 Pago no Licenciamento</option>
+                    </select>
+                    <button type="button" class="btn-popup" onclick="salvarSituacaoRapidaFicha()">💾 Atualizar Situação</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <strong>MOVISTAR OPERAÇÕES LOGÍSTICAS LTDA</strong> | Cascavel - PR
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
